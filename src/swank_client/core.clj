@@ -2,9 +2,23 @@
   (:import [java.net Socket]
 	   [java.io PrintWriter OutputStreamWriter InputStreamReader BufferedReader]))
 
-(def *server* {:name "localhost" :port 4005})
-
 (declare connection-handler)
+(declare dispatch-user-input)
+(declare dispatch-event)
+
+(def *server* {:name "localhost" :port 4005})
+(def *connection* nil)
+
+(def current-thread :repl-thread)
+(def current-package "user")
+(def current-continuation 0)
+
+(def event-queue (ref nil))
+
+(defmacro prog1 [& forms]
+  `(let [return# ~(first forms)]
+     ~@(rest forms)
+     return#))
 
 (defn code-message-length [length]
   (let [hex (Integer/toHexString length)]
@@ -18,11 +32,17 @@
       (.write full-message 0 (count full-message))
       (.flush))))
 
+(defn next-continuation []
+  (inc current-continuation))
+
 (defn make-form [command & args]
-  (list :emacs-rex (cons command args) "user" 't 1))
+  (list :emacs-rex (cons command args)
+	current-package
+	current-thread
+	(next-continuation)))
 
 (defn slime-rex [connection command & args]
-  (send-sexp connection (list :emacs-rex (cons command args) "user" 't 1)))
+  (send-sexp connection (apply make-form (cons command args))))
 
 (defn eval-form [connection form]
   (slime-rex connection 'swank:interactive-eval (str form)))
@@ -35,7 +55,6 @@
 	conn (ref {:in (BufferedReader. (InputStreamReader. (.getInputStream socket)))
 		   :out (OutputStreamWriter. (.getOutputStream socket))})]
     (-> #(connection-handler conn) Thread. .start)
-    (eval-form conn '(def swank:*configure-emacs-indentation* false))
     conn))
 
 (defn read-chars [number reader]
@@ -58,15 +77,7 @@
   (while
       (nil? (:exit @connection))
     (let [message (read-sexp connection)]
-      (case (first message)
-	    :return (println (second (second message)))
-	    :write-string (println (second message))
-	    :debug (print-debug-trace message)
-	    :indentation-update nil
-	    (println message)))))
-
-;(defn make-form [form]
-  ;(list :emacs-rex (list 'swank:interactive-eval (str form)) "user" 't 1))
+      (dosync (ref-set event-queue (cons message @event-queue))))))
 
 (defn debugger-restart [connection level restart-number]
   (slime-rex connection 'swank:invoke-nth-restart-for-emacs level restart-number))
@@ -76,18 +87,47 @@
   [connection]
   (slime-rex connection 'swank:throw-to-toplevel))
 
-;(:debug 4 1
-	;(Unable to resolve symbol: setq in this context   [Thrown class java.lang.Exception] nil)
-	;((QUIT Quit to the SLIME top level))
-	;((0 clojure.lang.Compiler.resolveIn(Compiler.java:5677) (:restartable nil))
-	 ;(1 clojure.lang.Compiler.resolve(Compiler.java:5621) (:restartable nil))
-	 ;(2 clojure.lang.Compiler.analyzeSymbol(Compiler.java:5584) (:restartable nil))
-	 ;(3 clojure.lang.Compiler.analyze(Compiler.java:5172) (:restartable nil))
-	 ;(4 clojure.lang.Compiler.analyze(Compiler.java:5151) (:restartable nil))
-	 ;(5 clojure.lang.Compiler$InvokeExpr.parse(Compiler.java:3036) (:restartable nil))
-	 ;(6 clojure.lang.Compiler.analyzeSeq(Compiler.java:5371) (:restartable nil))
-	 ;(7 clojure.lang.Compiler.analyze(Compiler.java:5190) (:restartable nil))
-	 ;(8 clojure.lang.Compiler.analyze(Compiler.java:5151) (:restartable nil))
-	 ;(9 clojure.lang.Compiler$BodyExpr$Parser.parse(Compiler.java:4670) (:restartable nil)))
-	;(nil))
-;(:debug-activate 4 1 nil)
+;; interactive loop
+
+(defn prompt-read [prompt]
+  (print (str prompt ": "))
+  (flush)
+  (read-line))
+
+(defn dispatch-user-input []
+  (let [input (prompt-read "user")]
+    (case input
+	  "quit" :break
+	  "(quit)" :break
+	  "" nil
+	  (eval-form *connection* (read-string input)))))
+
+(defn event-input-loop []
+  (loop [last-loop-result nil]
+    (when (not (= last-loop-result :break))
+      (recur
+       (do
+	 (while (nil? @event-queue))
+	 (println @event-queue)
+	 (doseq [event (reverse (dosync (prog1 @event-queue
+					       (ref-set event-queue nil))))]
+	   (dispatch-event event))
+	 (dispatch-user-input))))))
+
+(defn dispatch-event [event]
+  (case (first event)
+	:return (println (second (second event)))
+	:write-string (println (second event))
+	:debug (do (print-debug-trace event)
+		   (debugger-restart *connection* (nth event 2) 0)
+		   nil)
+	:debug-activate nil
+	:debug-return nil
+	:indentation-update nil
+	(println event)))
+	    
+(defn main []
+  (binding [*connection* (connect *server*)]
+    (dispatch-user-input)
+    (event-input-loop)))
+
