@@ -1,6 +1,9 @@
 (ns swank-client.core
   (:gen-class)
-  (:use [clojure.string :only [split]])
+  (:use [clojure.string :only [split]]
+	clojure.stacktrace
+	clojure.pprint
+	clojure.contrib.command-line)
   (:import [java.net Socket]
 	   [java.io PrintWriter OutputStreamWriter InputStreamReader BufferedReader]))
 
@@ -17,6 +20,9 @@
 (def ^{:doc "RPC-calls which haven't been returned."} unreturned-continuations (ref nil))
 
 (def ^{:doc "Queue of unhandled events"} event-queue (ref nil))
+(def ^{:doc "Stores output of repl evaluations"} repl-output (atom nil))
+
+(def debug? false)
 
 (defmacro prog1
   "Excecutes a sequence of forms, returning the value of the _first_ form executed."
@@ -153,16 +159,25 @@
 (defn event-input-loop
   "Primary program loop; schedules the handling of events and user input."
   []
-  (loop [last-loop-result nil]
-    (when (not (= last-loop-result :break))
-      (loop []
-	(while (empty? @event-queue))
+  (try 
+    (loop [last-loop-result nil]
+      (when (not (= last-loop-result :break))
+	(loop []
+	  (while (empty? @event-queue))
+	  (doseq [event (reverse (dosync (prog1 @event-queue
+						(ref-set event-queue nil))))]
+	    (dispatch-event event))
+	  (if-not (empty? @unreturned-continuations) (recur)))
 	(doseq [event (reverse (dosync (prog1 @event-queue
 					      (ref-set event-queue nil))))]
 	  (dispatch-event event))
-	(if-not (empty? @unreturned-continuations) (recur)))
-      (recur
-       (dispatch-user-input)))))
+	(pprint @repl-output)
+	(recur
+	 (dispatch-user-input))))
+      (catch Exception e
+	(println "An error occured")
+	(when debug?
+	  (print-stack-trace e)))))
 
 (defn print-debug-trace
   "Prints a :debug event, providing a stacktrace."
@@ -174,12 +189,14 @@
 (defn dispatch-event
   "Handles an event; :return events are returned, :debug events are escaped from immediately."
   [event]
+  (when debug?
+    (println "event: " event))
   (case (first event)
 	:return (do (clear-continuation))
 	:write-string (do (if (and (> (count event) 2)
 				   (= (nth event 2) :repl-result))
-			    (print (second event))
-			    (println (apply str (map #(str "- " %) (split (second event) #"\n")))))
+			    (swap! repl-output (fn [x] (read-string (second event)))) ;output from lisp should be readable
+			    (println (apply str (map #(str "- " % "\n") (split (second event) #"\n")))))
 			  (flush))
 	:debug (do (print-debug-trace event)
 		   (quit-debugger *connection*)
@@ -190,8 +207,15 @@
 	:indentation-update nil
 	(println event)))
 	    
-(defn -main []
-  (binding [*connection* (connect *server*)]
-    (dispatch-user-input)
-    (event-input-loop)))
+(defn -main [& args]
+  (with-command-line args
+    "Swank Client"
+    [[server s "Port number on which listen for requests" "localhost"]
+     [port p "Port number on which to ping children" "4005"]
+     [debug? d "Machine on which the database resides"]]
+    (binding [*server* {:name server :port (read-string port)}
+	      debug? debug?]
+      (binding [*connection* (connect *server*)]
+	(dispatch-user-input)
+	(event-input-loop)))))
 
