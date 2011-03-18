@@ -1,4 +1,6 @@
 (ns swank-client.core
+  (:gen-class)
+  (:use [clojure.string :only [split]])
   (:import [java.net Socket]
 	   [java.io PrintWriter OutputStreamWriter InputStreamReader BufferedReader]))
 
@@ -58,7 +60,6 @@
     (doto (:out @connection)
       (.write full-message 0 (count full-message))
       (.flush))))
-
 
 (defn make-form
   "Constructs an rpc s-exp for sending to swank."
@@ -141,12 +142,13 @@
 (defn dispatch-user-input
   "Prompt for and handles user input."
   []
-  (let [input (prompt-read @current-package)]
-    (case input
-	  "quit" :break
-	  "(quit)" :break
-	  "" nil
-	  (eval-repl-form *connection* (read-string input)))))
+  (loop []
+    (let [input (prompt-read @current-package)]
+      (case input
+	    "quit" :break
+	    "(quit)" :break
+	    "" (recur) ;if user doesn't provide input, reprompt
+	    (eval-repl-form *connection* (read-string input))))))
 
 (defn event-input-loop
   "Primary program loop; schedules the handling of events and user input."
@@ -174,10 +176,10 @@
   [event]
   (case (first event)
 	:return (do (clear-continuation))
-	:write-string (do (print (if (and (> (count event) 2)
-					  (= (nth event 2) :repl-result))
-				   "" "- ")
-				 (second event))
+	:write-string (do (if (and (> (count event) 2)
+				   (= (nth event 2) :repl-result))
+			    (print (second event))
+			    (println (apply str (map #(str "- " %) (split (second event) #"\n")))))
 			  (flush))
 	:debug (do (print-debug-trace event)
 		   (quit-debugger *connection*)
@@ -188,7 +190,7 @@
 	:indentation-update nil
 	(println event)))
 	    
-(defn main []
+(defn -main []
   (binding [*connection* (connect *server*)]
     (dispatch-user-input)
     (event-input-loop)))
