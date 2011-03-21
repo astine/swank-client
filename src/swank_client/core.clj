@@ -22,7 +22,7 @@
 (def ^{:doc "Queue of unhandled events"} event-queue (ref nil))
 (def ^{:doc "Stores output of repl evaluations"} repl-output (atom nil))
 
-(def debug? false)
+(def ^{:doc "Debug mode flag"} debug? false)
 
 (defmacro prog1
   "Excecutes a sequence of forms, returning the value of the _first_ form executed."
@@ -63,6 +63,8 @@
   [connection sexp]
   (let [msg (str sexp "\n")
 	full-message (str (code-message-length (count msg)) msg)]
+    (when debug?
+      (println "WRITE: " full-message))
     (doto (:out @connection)
       (.write full-message 0 (count full-message))
       (.flush))))
@@ -117,7 +119,6 @@
     (binding [*read-eval* false]
       (read-string (read-chars msg-length in)))))
 
-  
 (defn connection-handler
   "Listens for events and passes them on to the event-queue for handling when found."
   [connection]
@@ -156,28 +157,28 @@
 	    "" (recur) ;if user doesn't provide input, reprompt
 	    (eval-repl-form *connection* (read-string input))))))
 
+(defn flush-event-queue
+  "Handles all events left in event queue and clears the queue."
+  []
+  (doseq [event (reverse (dosync (prog1 @event-queue
+					(ref-set event-queue nil))))]
+    (dispatch-event event)))
+
 (defn event-input-loop
   "Primary program loop; schedules the handling of events and user input."
   []
-  (try 
-    (loop [last-loop-result nil]
-      (when (not (= last-loop-result :break))
-	(loop []
-	  (while (empty? @event-queue))
-	  (doseq [event (reverse (dosync (prog1 @event-queue
-						(ref-set event-queue nil))))]
-	    (dispatch-event event))
-	  (if-not (empty? @unreturned-continuations) (recur)))
-	(doseq [event (reverse (dosync (prog1 @event-queue
-					      (ref-set event-queue nil))))]
-	  (dispatch-event event))
-	(pprint @repl-output)
-	(recur
-	 (dispatch-user-input))))
-      (catch Exception e
-	(println "An error occured")
-	(when debug?
-	  (print-stack-trace e)))))
+  (loop [last-loop-result nil]
+    (when (not (= last-loop-result :break))
+      (loop []
+	(while (empty? @event-queue)) ;wait until something appears in queue
+	(flush-event-queue)
+	(if-not (empty? @unreturned-continuations) ;wait until all continuations are cleared
+	  (recur))) 
+      (Thread/sleep 100)
+      (flush-event-queue)
+      (pprint @repl-output)
+      (recur
+       (dispatch-user-input)))))
 
 (defn print-debug-trace
   "Prints a :debug event, providing a stacktrace."
@@ -190,12 +191,17 @@
   "Handles an event; :return events are returned, :debug events are escaped from immediately."
   [event]
   (when debug?
-    (println "event: " event))
+    (println event))
   (case (first event)
 	:return (do (clear-continuation))
 	:write-string (do (if (and (> (count event) 2)
 				   (= (nth event 2) :repl-result))
-			    (swap! repl-output (fn [x] (read-string (second event)))) ;output from lisp should be readable
+			    (try
+			      (swap! repl-output (fn [x] (read-string (second event)))) ;output from lisp should be readable
+			      (catch Exception e
+				(if (= (.getMessage e) "java.lang.Exception: Unreadable form")
+				  (swap! repl-output (fn [x] (second event)))
+				  (throw e))))
 			    (println (apply str (map #(str "- " % "\n") (split (second event) #"\n")))))
 			  (flush))
 	:debug (do (print-debug-trace event)
@@ -212,7 +218,7 @@
     "Swank Client"
     [[server s "Port number on which listen for requests" "localhost"]
      [port p "Port number on which to ping children" "4005"]
-     [debug? d "Machine on which the database resides"]]
+     [debug? d "Debug Mode"]]
     (binding [*server* {:name server :port (read-string port)}
 	      debug? debug?]
       (binding [*connection* (connect *server*)]
