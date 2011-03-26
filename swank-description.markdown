@@ -6,6 +6,7 @@ The basic Slime packet consists of a 6 character hex-string followed by an s-exp
 
 The hex-string contains the length of the message (s-expression plus newline) to follow. The s-expresssion is read by either Slime or Swank in a standard lisp fashion. The first element (a keyword) of the s-expression is the type of message being sent and any following elements are arguments. Message types beginning with 'emacs' such as ':emacs-rex' and ':emacs-interrupt' originate with emacs while all other message type originate with Swank.
 
+##Swank message types
 Here is a (partial) listing of message types:
 
 ###:emacs-rex - `(:emacs-rex 'form 'package 'thread 'continuation)`
@@ -153,3 +154,27 @@ Slime should display the corresponging condition/exception to the user and promp
             (failing-gracefully . 0))) 
 
 List the forms surrounding the point and the level of indentation each one implies. Slime uses this information to properly auto-indent code while it is being typed.
+
+---
+
+## RPC Calls
+Here is a (partial) list of available RPC calls
+
+###swank:interactive-eval - `(swank:interactive-eval 'form)`
+   Evaluate code Lisp image Slime is controlling
+
+- form: Form to be evaluated in Lisp image
+
+###swank:listener-eval - `(swank:listener-eval 'form)`
+   Evaluate code Lisp image Slime is controlling
+
+- form: Form to be evaluated in Lisp image
+
+###swank:invoke-nth-restart-for-emacs - `(swank:invoke-nth-restart-for-emacs 'level 'restart-number)`
+   Invoke a restart
+
+- level:          The condition on which to invoke the restart
+- restart-number: The number of the restart to invoke
+
+###swank:throw-to-toplevel - `(swank:throw-to-toplevel)`
+   Breaks out of the debugger

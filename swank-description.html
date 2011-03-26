@@ -3,6 +3,7 @@
 <pre><code>    000016(:return (:ok nil) 1)\n
 </code></pre>
 <p>The hex-string contains the length of the message (s-expression plus newline) to follow. The s-expresssion is read by either Slime or Swank in a standard lisp fashion. The first element (a keyword) of the s-expression is the type of message being sent and any following elements are arguments. Message types beginning with 'emacs' such as ':emacs-rex' and ':emacs-interrupt' originate with emacs while all other message type originate with Swank.</p>
+<h2>Swank message types</h2>
 <p>Here is a (partial) listing of message types:</p>
 <h3>:emacs-rex - <code>(:emacs-rex 'form 'package 'thread 'continuation)</code></h3>
 <p>Remote Procedure Call</p>
@@ -131,3 +132,24 @@
         (failing-gracefully . 0)))
 </code></pre>
 <p>List the forms surrounding the point and the level of indentation each one implies. Slime uses this information to properly auto-indent code while it is being typed.</p>
+<hr />
+<h2>RPC Calls</h2>
+<p>Here is a (partial) list of available RPC calls</p>
+<h3>swank:interactive-eval - <code>(swank:interactive-eval 'form)</code></h3>
+<p>Evaluate code Lisp image Slime is controlling</p>
+<ul>
+<li>form: Form to be evaluated in Lisp image</li>
+</ul>
+<h3>swank:listener-eval - <code>(swank:listener-eval 'form)</code></h3>
+<p>Evaluate code Lisp image Slime is controlling</p>
+<ul>
+<li>form: Form to be evaluated in Lisp image</li>
+</ul>
+<h3>swank:invoke-nth-restart-for-emacs - <code>(swank:invoke-nth-restart-for-emacs 'level 'restart-number)</code></h3>
+<p>Invoke a restart</p>
+<ul>
+<li>level:          The condition on which to invoke the restart</li>
+<li>restart-number: The number of the restart to invoke</li>
+</ul>
+<h3>swank:throw-to-toplevel - <code>(swank:throw-to-toplevel)</code></h3>
+<p>Breaks out of the debugger</p>
