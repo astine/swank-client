@@ -6,10 +6,10 @@ The basic Slime packet consists of a 6 character hex-string followed by an s-exp
 
 The hex-string contains the length of the message (s-expression plus newline) to follow. The s-expresssion is read by either Slime or Swank in a standard lisp fashion. The first element (a keyword) of the s-expression is the type of message being sent and any following elements are arguments. Message types beginning with 'emacs' such as ':emacs-rex' and ':emacs-interrupt' originate with emacs while all other message type originate with Swank.
 
-##Swank message types
+## Swank message types
 Here is a (partial) listing of message types:
 
-###:emacs-rex - `(:emacs-rex 'form 'package 'thread 'continuation)`
+### :emacs-rex - `(:emacs-rex 'form 'package 'thread 'continuation)`
    Remote Procedure Call
    
 - form:         An s-expression containing the RPC call.
@@ -17,7 +17,7 @@ Here is a (partial) listing of message types:
 - thread:       The Swank-side thread that the command will be executed in. (Defaults to the thread in which the REPL runs)
 - continuation: RPC exchanges are numbered so that Slime can match responses to requests. 
 
-####example:
+#### example:
 
         (:emacs-rex (swank:buffer-first-change "../program/file.lisp") "cl-user" t 4)
 
@@ -25,13 +25,13 @@ Emacs-rex signals an RPC call from Slime. This is the primary means of communica
 
 ---
 
-###:return - `(:return 'return-expression 'continuation)`
+### :return - `(:return 'return-expression 'continuation)`
    Return from RPC
    
 - return-expression: An s-expression which contains the return status and value of the RPC call
 - continuation:      RPC exchanges are numbered so that Slime can match responses to requests. 
 
-####example: 
+#### example: 
 
         (:return (:ok 14) 5)
 
@@ -39,13 +39,13 @@ Return signals that an RPC call has completed, either successfully or unsuccessf
 
 ---
 
-###:write-string - `(:write-string 'value &optional :repl-result)`
+### :write-string - `(:write-string 'value &optional :repl-result)`
    Text written to standard out from the Lisp image
    
 - value:        A string which the Lisp image has written to standard output
 - :repl-result: An optional value signaling that a value was returned by evaluated code
 
-####example: 
+#### example: 
 
         (:write-string "foo bar baz\n")
 
@@ -53,13 +53,13 @@ Write-string transports code which is to appear in the Slime REPL. Usually this 
 
 ---
 
-###:new-package - `(:new-package 'package-name 'prompt-string)`
+### :new-package - `(:new-package 'package-name 'prompt-string)`
    Signals that the current thread has changed packages/namespaces
    
 - package-name:  The name of the new package
 - prompt-string: A new string to be used for the REPL prompt (usually the same as package-name)
 
-####example: 
+#### example: 
 
         (:new-package "foo" "foo")
 
@@ -67,7 +67,7 @@ New-package signals that the current thread is changing packages. This is return
 
 ---
 
-###:debug - `(:debug 'thread 'level 'condition 'restarts 'frames 'continuations)`
+### :debug - `(:debug 'thread 'level 'condition 'restarts 'frames 'continuations)`
    Full description of an un-handled condition/exception
    
 - thread:        The thread which threw the condition
@@ -77,7 +77,7 @@ New-package signals that the current thread is changing packages. This is return
 - frames:        A stacktrace
 - continuations: Pending continuations
 
-####example: 
+#### example: 
 
         (:debug 10 1
 	          ("No message." "  [Thrown class java.lang.ClassCastException]" nil)
@@ -108,7 +108,7 @@ Debug provides a full description of an unhandled condition/exception.
 
 ---
 
-###:debug-activate - `(:debug-activate 'thread 'level)`
+### :debug-activate - `(:debug-activate 'thread 'level)`
    Triggers Slime to begin a debugging session.
    
 - thread:        The thread which threw the condition
@@ -118,12 +118,12 @@ Slime should display the corresponging condition/exception to the user and promp
 
 ---
 
-###:indentation-update - `(:indentation-update 'description)`
+### :indentation-update - `(:indentation-update 'description)`
    A description of the current indentation depth/level
    
 - description: An s-expression listing the forms which surround the point (cursor location) in Slime
 
-####example: 
+#### example: 
 
         (:indentation-update
            ((rec-seq . 1)
@@ -160,21 +160,21 @@ List the forms surrounding the point and the level of indentation each one impli
 ## RPC Calls
 Here is a (partial) list of available RPC calls
 
-###swank:interactive-eval - `(swank:interactive-eval 'form)`
+### swank:interactive-eval - `(swank:interactive-eval 'form)`
    Evaluate code Lisp image Slime is controlling
 
 - form: Form to be evaluated in Lisp image
 
-###swank:listener-eval - `(swank:listener-eval 'form)`
+### swank:listener-eval - `(swank:listener-eval 'form)`
    Evaluate code Lisp image Slime is controlling
 
 - form: Form to be evaluated in Lisp image
 
-###swank:invoke-nth-restart-for-emacs - `(swank:invoke-nth-restart-for-emacs 'level 'restart-number)`
+### swank:invoke-nth-restart-for-emacs - `(swank:invoke-nth-restart-for-emacs 'level 'restart-number)`
    Invoke a restart
 
 - level:          The condition on which to invoke the restart
 - restart-number: The number of the restart to invoke
 
-###swank:throw-to-toplevel - `(swank:throw-to-toplevel)`
+### swank:throw-to-toplevel - `(swank:throw-to-toplevel)`
    Breaks out of the debugger
